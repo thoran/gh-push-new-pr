@@ -1,0 +1,4 @@
+# TODO
+
+1. -e, --edit: where the branch has an open pull request, bring its title and body up to date from the commit and the CHANGELOG, as wanted after a commit is reworked.
+2. A branch holding two versions which land together: title the pull request with both.

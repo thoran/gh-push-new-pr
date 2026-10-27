@@ -1,0 +1,9 @@
+# CHANGELOG
+
+## 20261028
+
+0.0.0: Push a branch to origin and open a pull request for it where it has none.
+
+1. + gh-push-new-pr: pushes the branch with a lease and, where it has no open pull request, opens one against origin's default branch or the base branch named, titled with the last commit's subject, its body that version's CHANGELOG entry or else the commit's body; prints the URL. Stops where it isn't on a branch, or where the branch is the base branch, holds another branch the base branch doesn't, has fallen behind it, or has nothing it hasn't.
+2. + test/gh-push-new-pr_test.rb
+3. + README.md, LICENSE, Gemfile, CHANGELOG, TODO

@@ -1,0 +1,196 @@
+#!/usr/bin/env ruby
+# gh-push-new-pr
+
+# 20261028
+# 0.0.0
+
+# Usage:
+# 1. On a branch ready for review:
+#  `gh push-new-pr`
+#   It pushes the branch to origin and, where the branch has no open pull request, opens one against origin's default branch, titled with the last commit's subject, the CHANGELOG's entry for that commit's version as its body. Either way it prints the pull request's URL, and only that, on stdout.
+# 2. To open it against another base branch:
+#  `gh push-new-pr <base-branch>`
+
+# Notes:
+# 1. The push is forced with a lease, so that a branch reworked since it was pushed replaces what was pushed, and a branch pushed to from elsewhere since stops it.
+# 2. Where the subject has no version, as x.y.z: summary, or the CHANGELOG has no entry for it, the body is the commit's body.
+# 3. An open pull request is left as it is, its title and body included.
+# 4. Requires gh, signed in.
+# 5. Assumes that the remote is called origin.
+
+gem 'git.rb'
+gem 'switches.rb'
+
+require 'Git/Remote'
+require 'json'
+require 'switches.rb'
+
+CHANGELOG_ENTRY_END = /^(?:## |\d+\.\d+\.\d+:)/
+CHANGELOG_FILENAMES = %w{CHANGELOG CHANGELOG.md}
+OPTIONS = %w{-h --help}
+VERSION_SUBJECT = /\A(\d+\.\d+\.\d+):/
+
+def usage
+  puts "gh-push-new-pr - Push a branch to origin and open a pull request for it where it has none."
+  puts
+  puts "Usage: gh push-new-pr [options] [<base-branch>]"
+  puts
+  puts "The base branch is origin's default branch unless given."
+  puts
+  puts "Options:"
+  puts "  -h, --help  Show this help"
+end
+
+def validate_options
+  if option = ARGV.find{|argument| argument.start_with?('-') && !OPTIONS.include?(argument)}
+    warn "Unknown option: #{option}"
+    usage
+    exit 1
+  end
+end
+
+def switches
+  @switches ||= Switches.new do |s|
+    s.perform(:h, :help?) do
+      usage
+      exit
+    end
+  end
+end
+
+def validate_args
+  if ARGV.length > 1
+    usage
+    exit 1
+  end
+end
+
+def validate_origin
+  abort "There is no remote called origin." unless Git::Remote.exist?('origin')
+end
+
+def git(*arguments)
+  IO.popen(['git', *arguments], err: File::NULL, &:read)
+end
+
+def run!(*command, **options)
+  system(*command, **options) || exit(1)
+end
+
+def branch
+  @branch ||= git('symbolic-ref', '--quiet', '--short', 'HEAD').strip
+end
+
+def validate_branch
+  abort "Not on a branch. Check out the branch to push." if branch.empty?
+end
+
+def default_branch
+  git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD').strip.delete_prefix('origin/')
+end
+
+def base_branch
+  @base_branch ||= ARGV.first || default_branch
+end
+
+def validate_base_branch
+  abort <<~MESSAGE if base_branch.empty?
+    origin's default branch isn't known here. Name the base branch, or have git find it, then run `gh push-new-pr` again:
+      git remote set-head origin --auto
+  MESSAGE
+  abort "#{branch} is the base branch. Check out the branch to push." if branch == base_branch
+end
+
+def other_bases
+  @other_bases ||= (
+    refs = git('for-each-ref', "--merged=#{branch}", "--no-merged=origin/#{base_branch}", '--format=%(refname)', 'refs/remotes/origin').split
+    (refs - ['refs/remotes/origin/HEAD', "refs/remotes/origin/#{branch}"]).map{|ref| ref.delete_prefix('refs/remotes/')}
+  )
+end
+
+def rebased?
+  system('git', 'merge-base', '--is-ancestor', "origin/#{base_branch}", branch)
+end
+
+def ahead?
+  git('rev-list', '--count', "origin/#{base_branch}..#{branch}").to_i > 0
+end
+
+def validate_commits
+  abort <<~MESSAGE unless other_bases.empty?
+    #{branch} holds #{other_bases.join(', ')}, which origin/#{base_branch} doesn't, so #{base_branch} may not be its base. Merge those first, or name its base branch:
+      gh push-new-pr <base-branch>
+  MESSAGE
+  abort <<~MESSAGE unless rebased?
+    #{base_branch} has moved on since #{branch} was cut. Rebase it, then run `gh push-new-pr` again:
+      git rebase origin/#{base_branch}
+  MESSAGE
+  abort "#{branch} has nothing which origin/#{base_branch} doesn't." unless ahead?
+end
+
+def subject
+  @subject ||= git('log', '-1', '--format=%s', branch).strip
+end
+
+def version
+  @version ||= subject[VERSION_SUBJECT, 1]
+end
+
+def changelog
+  paths = git('ls-tree', '--name-only', branch).lines.collect(&:chomp)
+  path = CHANGELOG_FILENAMES.find{|filename| paths.include?(filename)}
+  path ? git('show', "#{branch}:#{path}") : ''
+end
+
+# The entry runs from the line naming the version to the next heading or version, less that first line, whose summary the title already gives.
+def changelog_entry
+  lines = changelog.lines.drop_while{|line| !line.match?(/^(?:## \[?)?#{Regexp.escape(version)}\b/)}
+  lines.drop(1).take_while{|line| !line.match?(CHANGELOG_ENTRY_END)}.join.strip
+end
+
+def commit_body
+  git('log', '-1', '--format=%b', branch).strip
+end
+
+def body
+  @body ||= (
+    entry = changelog_entry if version
+    entry.to_s.empty? ? commit_body : entry
+  )
+end
+
+def push_branch
+  run!('git', 'push', '--force-with-lease', '--set-upstream', 'origin', branch, out: :err)
+end
+
+def open_pull_request_url
+  @open_pull_request_url ||= (
+    output = IO.popen(['gh', 'pr', 'view', branch, '--json', 'state,url'], err: File::NULL, &:read)
+    pull_request = JSON.parse(output) if $?.success?
+    pull_request['url'] if pull_request && pull_request['state'] == 'OPEN'
+  )
+end
+
+def create_pull_request
+  run!('gh', 'pr', 'create', '--base', base_branch, '--head', branch, '--title', subject, '--body', body)
+end
+
+def show_open_pull_request
+  warn "#{branch} already has an open pull request, which is left as it is."
+  puts open_pull_request_url
+end
+
+def main
+  validate_options
+  switches
+  validate_args
+  validate_origin
+  validate_branch
+  validate_base_branch
+  run!('git', 'fetch', 'origin', base_branch)
+  validate_commits
+  push_branch
+  open_pull_request_url ? show_open_pull_request : create_pull_request
+end
+
+main
