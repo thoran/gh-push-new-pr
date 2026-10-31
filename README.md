@@ -4,7 +4,7 @@
 
 Push a branch to origin and open a pull request for it on GitHub where it has none, titled with the last commit's subject, with that version's CHANGELOG entry as its body.
 
-Where the branch already has an open pull request it pushes the branch and leaves the pull request as it is. Either way it prints the pull request's URL, and only that, on stdout.
+Where the branch already has an open pull request it pushes the branch and brings the pull request's title and body up to date, unless they have been edited on GitHub. Either way it prints the pull request's URL, and only that, on stdout.
 
 Its sibling for merging is [gh-ff-merge](https://github.com/thoran/gh-ff-merge).
 
@@ -55,6 +55,19 @@ The title is the last commit's subject. Where the subject begins with a version,
 
 Where there is no version or no entry for it, the body is the commit's body.
 
+The body ends with a hidden comment, `<!-- gh-push-new-pr sha256:… -->`, holding a digest of the title and body written. Run again once the commit or the CHANGELOG has been reworked, it checks an open pull request's title and body, less the comment, against the digest:
+
+- where they match, it rewrites them from the commit and the CHANGELOG, with a fresh comment, or leaves them where they are what it would write already;
+- where they don't, as after an edit on GitHub, or there is no comment, as on a pull request opened otherwise, it leaves them as they are, and says so on stderr.
+
+To replace them regardless, discarding any edit made on GitHub:
+
+```shell
+$ gh push-new-pr --overwrite
+```
+
+A closed or merged pull request is never rewritten; a branch whose last pull request isn't open gets a new one.
+
 The push is forced with a lease, so that a branch reworked since it was pushed replaces what was pushed, while a branch pushed to from elsewhere since stops it.
 
 It stops, pushing nothing, where:
@@ -70,7 +83,7 @@ It stops, pushing nothing, where:
 ## Notes
 
 1. It fetches from, and pushes to, the remote called origin.
-2. An open pull request's title and body aren't brought up to date. Where the commit has been reworked, edit them with `gh pr edit`.
+2. `--overwrite` has no short form, since it discards edits made on GitHub.
 
 ## Contributing
 

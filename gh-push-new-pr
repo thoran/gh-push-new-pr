@@ -1,20 +1,22 @@
 #!/usr/bin/env ruby
 # gh-push-new-pr
 
-# 20261028
-# 0.0.0
+# 20261031
+# 0.1.0
 
 # Usage:
 # 1. On a branch ready for review:
 #  `gh push-new-pr`
-#   It pushes the branch to origin and, where the branch has no open pull request, opens one against origin's default branch, titled with the last commit's subject, the CHANGELOG's entry for that commit's version as its body. Either way it prints the pull request's URL, and only that, on stdout.
+#   It pushes the branch to origin and, where the branch has no open pull request, opens one against origin's default branch, titled with the last commit's subject, the CHANGELOG's entry for that commit's version as its body. Where the branch has one, it brings its title and body up to date, unless they have been edited on GitHub. Either way it prints the pull request's URL, and only that, on stdout.
 # 2. To open it against another base branch:
 #  `gh push-new-pr <base-branch>`
+# 3. To replace an open pull request's title and body, edited or not:
+#  `gh push-new-pr --overwrite`
 
 # Notes:
 # 1. The push is forced with a lease, so that a branch reworked since it was pushed replaces what was pushed, and a branch pushed to from elsewhere since stops it.
 # 2. Where the subject has no version, as x.y.z: summary, or the CHANGELOG has no entry for it, the body is the commit's body.
-# 3. An open pull request is left as it is, its title and body included.
+# 3. The body ends with a hidden comment holding a digest of the title and body written. An open pull request whose title and body, less the comment, no longer match it, or which has none, as one opened otherwise, is left as it is, unless --overwrite is given.
 # 4. Requires gh, signed in.
 # 5. Assumes that the remote is called origin.
 
@@ -22,23 +24,26 @@ gem 'git.rb'
 gem 'switches.rb'
 
 require 'Git/Remote'
+require 'digest'
 require 'json'
 require 'switches.rb'
 
 CHANGELOG_ENTRY_END = /^(?:## |\d+\.\d+\.\d+:)/
 CHANGELOG_FILENAMES = %w{CHANGELOG CHANGELOG.md}
-OPTIONS = %w{-h --help}
+OPTIONS = %w{--overwrite -h --help}
+STAMP = /\s*<!-- gh-push-new-pr sha256:(\h{64}) -->\s*\z/
 VERSION_SUBJECT = /\A(\d+\.\d+\.\d+):/
 
 def usage
-  puts "gh-push-new-pr - Push a branch to origin and open a pull request for it where it has none."
+  puts "gh-push-new-pr - Push a branch to origin and open a pull request for it, or bring its open one up to date."
   puts
   puts "Usage: gh push-new-pr [options] [<base-branch>]"
   puts
   puts "The base branch is origin's default branch unless given."
   puts
   puts "Options:"
-  puts "  -h, --help  Show this help"
+  puts "  --overwrite  Replace an open pull request's title and body, even where edited on GitHub"
+  puts "  -h, --help   Show this help"
 end
 
 def validate_options
@@ -51,6 +56,7 @@ end
 
 def switches
   @switches ||= Switches.new do |s|
+    s.boolean(:overwrite){"Replace an open pull request's title and body, even where edited on GitHub"}
     s.perform(:h, :help?) do
       usage
       exit
@@ -163,20 +169,71 @@ def push_branch
   run!('git', 'push', '--force-with-lease', '--set-upstream', 'origin', branch, out: :err)
 end
 
-def open_pull_request_url
-  @open_pull_request_url ||= (
-    output = IO.popen(['gh', 'pr', 'view', branch, '--json', 'state,url'], err: File::NULL, &:read)
+def digest(title, body)
+  Digest::SHA256.hexdigest("#{title}\n#{body}")
+end
+
+def stamped_body
+  [body, "<!-- gh-push-new-pr sha256:#{digest(subject, body)} -->"].reject(&:empty?).join("\n\n")
+end
+
+def open_pull_request
+  @open_pull_request ||= (
+    output = IO.popen(['gh', 'pr', 'view', branch, '--json', 'state,url,title,body'], err: File::NULL, &:read)
     pull_request = JSON.parse(output) if $?.success?
-    pull_request['url'] if pull_request && pull_request['state'] == 'OPEN'
+    pull_request if pull_request && pull_request['state'] == 'OPEN'
   )
 end
 
-def create_pull_request
-  run!('gh', 'pr', 'create', '--base', base_branch, '--head', branch, '--title', subject, '--body', body)
+def open_pull_request_url
+  open_pull_request && open_pull_request['url']
 end
 
-def show_open_pull_request
-  warn "#{branch} already has an open pull request, which is left as it is."
+def open_pull_request_title
+  open_pull_request['title'].to_s
+end
+
+# The body less the comment and the whitespace before it, and the digest the comment holds, if any. Line endings are made Unix ones, as GitHub's editor saves Windows ones.
+def open_pull_request_body_and_digest
+  @open_pull_request_body_and_digest ||= (
+    body = open_pull_request['body'].to_s.gsub("\r\n", "\n")
+    match = body.match(STAMP)
+    match ? [match.pre_match, match[1]] : [body, nil]
+  )
+end
+
+def stamped?
+  !!open_pull_request_body_and_digest.last
+end
+
+def edited?
+  pull_request_body, pull_request_digest = open_pull_request_body_and_digest
+  pull_request_digest != digest(open_pull_request_title, pull_request_body)
+end
+
+def up_to_date?
+  !edited? && open_pull_request_title == subject && open_pull_request_body_and_digest.first == body
+end
+
+def create_pull_request
+  run!('gh', 'pr', 'create', '--base', base_branch, '--head', branch, '--title', subject, '--body', stamped_body)
+end
+
+def edit_pull_request
+  run!('gh', 'pr', 'edit', open_pull_request_url, '--title', subject, '--body', stamped_body, out: File::NULL)
+end
+
+def update_pull_request
+  if up_to_date?
+    warn "#{branch}'s pull request is up to date already."
+  elsif switches.overwrite? || !edited?
+    edit_pull_request
+    warn "#{branch}'s pull request is brought up to date."
+  elsif stamped?
+    warn "#{branch}'s pull request has been edited on GitHub, so is left as it is. --overwrite replaces its title and body."
+  else
+    warn "#{branch}'s pull request wasn't opened by gh push-new-pr, so is left as it is. --overwrite replaces its title and body."
+  end
   puts open_pull_request_url
 end
 
@@ -190,7 +247,7 @@ def main
   run!('git', 'fetch', 'origin', base_branch)
   validate_commits
   push_branch
-  open_pull_request_url ? show_open_pull_request : create_pull_request
+  open_pull_request_url ? update_pull_request : create_pull_request
 end
 
 main

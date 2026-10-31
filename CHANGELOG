@@ -1,5 +1,17 @@
 # gh-push-new-pr/CHANGELOG
 
+## 20261031
+
+0.1.0: Bring an open pull request's title and body up to date, unless edited on GitHub.
+
+1. ~ gh-push-new-pr: + stamped_body(): the body written ends with a hidden comment holding a SHA-256 digest of the title and body.
+2. ~ gh-push-new-pr: + update_pull_request(), in place of show_open_pull_request(): where the branch has an open pull request whose title and body, less the comment, match its digest, rewrites them with `gh pr edit`, unless they are up to date already; where they don't, or there is no comment, leaves them and says so on stderr.
+3. + gh-push-new-pr: --overwrite: replaces an open pull request's title and body regardless.
+4. ~ gh-push-new-pr: + open_pull_request(): open_pull_request_url() reads the title and body with the state, still taking only an open pull request, so a closed or merged one is never rewritten.
+5. ~ test/gh-push-new-pr_test.rb: + bringing up to date, an edited title or body, Windows line endings, a pull request opened otherwise, --overwrite, `gh pr edit` failing.
+6. ~ README.md, TODO
+
+
 ## 20261028
 
 0.0.0: Push a branch to origin and open a pull request for it where it has none.
