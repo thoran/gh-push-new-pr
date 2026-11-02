@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # gh-push-new-pr
 
-# 20261031
-# 0.1.0
+# 20261102
+# 0.1.1
 
 # Usage:
 # 1. On a branch ready for review:
@@ -16,9 +16,10 @@
 # Notes:
 # 1. The push is forced with a lease, so that a branch reworked since it was pushed replaces what was pushed, and a branch pushed to from elsewhere since stops it.
 # 2. Where the subject has no version, as x.y.z: summary, or the CHANGELOG has no entry for it, the body is the commit's body.
-# 3. The body ends with a hidden comment holding a digest of the title and body written. An open pull request whose title and body, less the comment, no longer match it, or which has none, as one opened otherwise, is left as it is, unless --overwrite is given.
-# 4. Requires gh, signed in.
-# 5. Assumes that the remote is called origin.
+# 3. In the CHANGELOG's entry, a +, - or * after an item's number is escaped, as \+, so that Markdown shows it rather than starting a nested list.
+# 4. The body ends with a hidden comment holding a digest of the title and body written. An open pull request whose title and body, less the comment, no longer match it, or which has none, as one opened otherwise, is left as it is, unless --overwrite is given.
+# 5. Requires gh, signed in.
+# 6. Assumes that the remote is called origin.
 
 gem 'git.rb'
 gem 'switches.rb'
@@ -30,6 +31,7 @@ require 'switches.rb'
 
 CHANGELOG_ENTRY_END = /^(?:## |\d+\.\d+\.\d+:)/
 CHANGELOG_FILENAMES = %w{CHANGELOG CHANGELOG.md}
+LIST_MARKER_AFTER_NUMBER = /^(\s*\d+\.\s+)([-+*])(?=\s|$)/
 OPTIONS = %w{--overwrite -h --help}
 STAMP = /\s*<!-- gh-push-new-pr sha256:(\h{64}) -->\s*\z/
 VERSION_SUBJECT = /\A(\d+\.\d+\.\d+):/
@@ -154,6 +156,10 @@ def changelog_entry
   lines.drop(1).take_while{|line| !line.match?(CHANGELOG_ENTRY_END)}.join.strip
 end
 
+def escaped(entry)
+  entry.gsub(LIST_MARKER_AFTER_NUMBER, '\1\\\\\2')
+end
+
 def commit_body
   git('log', '-1', '--format=%b', branch).strip
 end
@@ -161,7 +167,7 @@ end
 def body
   @body ||= (
     entry = changelog_entry if version
-    entry.to_s.empty? ? commit_body : entry
+    entry.to_s.empty? ? commit_body : escaped(entry)
   )
 end
 

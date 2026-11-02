@@ -1,5 +1,14 @@
 # gh-push-new-pr/CHANGELOG
 
+## 20261102
+
+0.1.1: Escape the list markers after an item's number in a CHANGELOG entry used as a pull request's body.
+
+1. ~ gh-push-new-pr: + escaped(), + LIST_MARKER_AFTER_NUMBER: body() writes a +, - or * after an item's number as \+, \- or \*. GitHub's Markdown took 1. + item for a nested list, showing a bullet in place of the +.
+2. ~ test/gh-push-new-pr_test.rb: + escaping in the CHANGELOG's entry and not in the commit's body; + bringing up to date a body written unescaped.
+3. ~ README.md
+
+
 ## 20261031
 
 0.1.0: Bring an open pull request's title and body up to date, unless edited on GitHub.

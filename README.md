@@ -53,6 +53,8 @@ The title is the last commit's subject. Where the subject begins with a version,
 - The second thing.
 ```
 
+In the entry, a `+`, `-` or `*` after an item's number is escaped, as `\+`, so that GitHub shows it, where Markdown would otherwise take it to start a nested list.
+
 Where there is no version or no entry for it, the body is the commit's body.
 
 The body ends with a hidden comment, `<!-- gh-push-new-pr sha256:… -->`, holding a digest of the title and body written. Run again once the commit or the CHANGELOG has been reworked, it checks an open pull request's title and body, less the comment, against the digest:

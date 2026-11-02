@@ -1,7 +1,7 @@
 # test/gh-push-new-pr_test.rb
 
-# 20261031
-# 0.1.0
+# 20261102
+# 0.1.1
 
 # Each test runs gh-push-new-pr as a subprocess in a clone of a bare repository
 # made for the purpose, standing in for origin, with a fake gh first on the
@@ -162,7 +162,7 @@ describe "gh-push-new-pr" do
         _(status).must_equal 0
         _(stdout).must_include URL
         _(origin_sha('second')).must_equal sha('second')
-        _(created).must_equal('--base' => 'master', '--head' => 'second', '--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. + the second thing.\n2. ~ the first thing."))
+        _(created).must_equal('--base' => 'master', '--head' => 'second', '--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing."))
       end
     end
 
@@ -180,7 +180,7 @@ describe "gh-push-new-pr" do
         branch_from('master', 'first')
         commit_changelog('0.0.0: + the first thing.')
         push_new_pr
-        _(without_stamp(created['--body'])).must_equal '1. + the first thing.'
+        _(without_stamp(created['--body'])).must_equal '1. \\+ the first thing.'
       end
     end
 
@@ -190,6 +190,23 @@ describe "gh-push-new-pr" do
         commit_changelog('0.1.0: + the second thing.', "# Changelog\n\n## [0.1.0] - 2026-10-28\n\n### Added\n\n- The second thing.\n\n## [0.0.0] - 2026-10-27\n\n- The first thing.\n", filename: 'CHANGELOG.md')
         push_new_pr
         _(without_stamp(created['--body'])).must_equal "### Added\n\n- The second thing."
+      end
+    end
+
+    it "escapes a +, - or * after an item's number in the CHANGELOG's entry, so that Markdown shows it" do
+      in_clone do
+        branch_from('master', 'fourth')
+        commit_changelog('0.3.0: ~ the fourth thing.', "## 20261102\n\n0.3.0: ~ the fourth thing.\n\n1. + a.\n2. - b.\n3. * c.\n4. ~ d.\n5. /e/f/\n  6. + g.\n7. +h.\n")
+        push_new_pr
+        _(without_stamp(created['--body'])).must_equal "1. \\+ a.\n2. \\- b.\n3. \\* c.\n4. ~ d.\n5. /e/f/\n  6. \\+ g.\n7. +h."
+      end
+    end
+
+    it "leaves the commit's body as it is" do
+      in_clone do
+        branch_from('master', 'tidy', "Tidy the README.\n\n1. + a heading.")
+        push_new_pr
+        _(without_stamp(created['--body'])).must_equal '1. + a heading.'
       end
     end
 
@@ -273,7 +290,17 @@ describe "gh-push-new-pr" do
         _(status).must_equal 0
         _(stdout).must_equal "#{URL}\n"
         _(stderr).must_include "second's pull request is brought up to date."
-        _(edits).must_equal [[URL, {'--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. + the second thing.\n2. ~ the first thing.")}]]
+        _(edits).must_equal [[URL, {'--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing.")}]]
+      end
+    end
+
+    it "brings up to date a body written with its list markers unescaped" do
+      in_clone do
+        branch_from('master', 'second')
+        commit_changelog('0.1.0: + the second thing.')
+        pull_request(title: '0.1.0: + the second thing.', body: stamped('0.1.0: + the second thing.', "1. + the second thing.\n2. ~ the first thing."))
+        push_new_pr
+        _(edits).must_equal [[URL, {'--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing.")}]]
       end
     end
 
@@ -349,7 +376,7 @@ describe "gh-push-new-pr" do
         status, stdout, _stderr = push_new_pr('--overwrite')
         _(status).must_equal 0
         _(stdout).must_equal "#{URL}\n"
-        _(edits).must_equal [[URL, {'--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. + the second thing.\n2. ~ the first thing.")}]]
+        _(edits).must_equal [[URL, {'--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing.")}]]
         push_new_pr
         _(edits.length).must_equal 1
       end
