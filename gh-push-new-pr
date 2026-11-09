@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # gh-push-new-pr
 
-# 20261102
-# 0.1.1
+# 20261109
+# 0.1.2
 
 # Usage:
 # 1. On a branch ready for review:
@@ -137,7 +137,7 @@ def validate_commits
 end
 
 def subject
-  @subject ||= git('log', '-1', '--format=%s', branch).strip
+  @subject ||= git('log', '-1', '--format=%s', branch, '--').strip
 end
 
 def version
@@ -161,7 +161,7 @@ def escaped(entry)
 end
 
 def commit_body
-  git('log', '-1', '--format=%b', branch).strip
+  git('log', '-1', '--format=%b', branch, '--').strip
 end
 
 def body

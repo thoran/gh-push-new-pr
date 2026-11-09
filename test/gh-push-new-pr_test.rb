@@ -1,7 +1,7 @@
 # test/gh-push-new-pr_test.rb
 
-# 20261102
-# 0.1.1
+# 20261109
+# 0.1.2
 
 # Each test runs gh-push-new-pr as a subprocess in a clone of a bare repository
 # made for the purpose, standing in for origin, with a fake gh first on the
@@ -162,7 +162,7 @@ describe "gh-push-new-pr" do
         _(status).must_equal 0
         _(stdout).must_include URL
         _(origin_sha('second')).must_equal sha('second')
-        _(created).must_equal('--base' => 'master', '--head' => 'second', '--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing."))
+        _(created).must_equal({'--base' => 'master', '--head' => 'second', '--title' => '0.1.0: + the second thing.', '--body' => stamped('0.1.0: + the second thing.', "1. \\+ the second thing.\n2. ~ the first thing.")})
       end
     end
 
@@ -234,6 +234,18 @@ describe "gh-push-new-pr" do
         commit_changelog("0.1.00: + not the second thing.\n\nNot the second.")
         push_new_pr
         _(without_stamp(created['--body'])).must_equal 'Not the second.'
+      end
+    end
+
+    it "reads the subject and body of a branch which shares its name with a path" do
+      in_clone do
+        branch_from('master', 'todo')
+        File.write('todo', "1. The next thing.\n")
+        git('add', 'todo')
+        git('commit', '-m', "+ todo.\n\nThe jobs decided upon.")
+        push_new_pr
+        _(created['--title']).must_equal '+ todo.'
+        _(without_stamp(created['--body'])).must_equal 'The jobs decided upon.'
       end
     end
 

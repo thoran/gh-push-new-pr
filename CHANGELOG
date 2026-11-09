@@ -1,5 +1,14 @@
 # gh-push-new-pr/CHANGELOG
 
+## 20261109
+
+0.1.2: Read the subject and body of a branch which shares its name with a path, as todo does TODO where case is ignored.
+
+1. ~ gh-push-new-pr: subject(), commit_body(): The branch is followed by --. git log took a name which was also a path for ambiguous and stopped, leaving the title blank.
+2. ~ test/gh-push-new-pr_test.rb: A branch which shares its name with a path is tested.
+3. ~ test/gh-push-new-pr_test.rb: The pull request expected upon opening is a braced Hash. Minitest 6.1 takes a bare one for keywords, expecting nil.
+
+
 ## 20261102
 
 0.1.1: Escape the list markers after an item's number in a CHANGELOG entry used as a pull request's body.
